@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "World Forge"
+description = "A visual world-planning workspace that turns concept art into measured Unreal Engine terrain, asset, placement, and generation instructions."
+version = "1.0.0"
+id = "artifacts/world-forge"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24562
+
+[services.development]
+run = "pnpm --filter @workspace/world-forge run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/world-forge", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/world-forge/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24562"
+BASE_PATH = "/"

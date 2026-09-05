@@ -1,0 +1,137 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-card-border: hsl(var(--card-border));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-popover-border: hsl(var(--popover-border));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+
+  --font-sans: 'Plus Jakarta Sans', sans-serif;
+  --font-serif: 'Plus Jakarta Sans', sans-serif;
+  --font-mono: 'Space Mono', monospace;
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 6px);
+}
+
+:root {
+  /* Premium Technical Light Mode */
+  --background: 210 20% 98%;
+  --foreground: 215 25% 15%;
+
+  --border: 214 15% 90%;
+  --input: 214 15% 90%;
+  --ring: 11 75% 57%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 215 25% 15%;
+  --card-border: 214 15% 90%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 215 25% 15%;
+  --popover-border: 214 15% 90%;
+
+  --primary: 11 80% 55%; /* Technical Vermillion */
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 210 15% 94%;
+  --secondary-foreground: 215 25% 15%;
+
+  --muted: 210 15% 95%;
+  --muted-foreground: 215 15% 45%;
+
+  --accent: 198 35% 25%; /* Deep technical teal */
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 350 80% 55%;
+  --destructive-foreground: 0 0% 100%;
+
+  --sidebar: 215 30% 12%;
+  --sidebar-foreground: 210 20% 85%;
+  --sidebar-border: 215 30% 16%;
+  --sidebar-primary: 11 80% 55%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 215 30% 18%;
+  --sidebar-accent-foreground: 210 20% 98%;
+
+  --radius: 0.5rem;
+}
+
+.dark {
+  /* Minimal override if needed, but defaulting to Light as requested */
+  --background: 215 30% 10%;
+  --foreground: 210 20% 90%;
+  --border: 215 30% 18%;
+  --card: 215 30% 12%;
+  --card-foreground: 210 20% 90%;
+  --card-border: 215 30% 18%;
+  --muted: 215 30% 15%;
+  --muted-foreground: 215 15% 60%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply font-sans antialiased bg-background text-foreground min-w-[320px];
+  }
+  button, a, input, select, textarea {
+    transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, opacity 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+  }
+  ::selection { background: hsl(var(--primary) / 0.2); color: hsl(var(--foreground)); }
+}
+
+@layer utilities {
+  .wf-grid {
+    background-image: linear-gradient(hsl(var(--foreground) / 0.05) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--foreground) / 0.05) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .wf-panel {
+    @apply rounded-xl border border-border bg-card shadow-[0_4px_20px_-4px_hsl(var(--foreground)/0.03)] hover:shadow-[0_8px_30px_-6px_hsl(var(--foreground)/0.05)] transition-shadow duration-300;
+  }
+  .wf-kicker {
+    @apply font-mono text-[10.5px] uppercase tracking-[0.15em] font-semibold;
+  }
+  .wf-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+  .wf-scroll::-webkit-scrollbar-thumb { background: hsl(var(--foreground) / 0.15); border-radius: 99px; }
+}

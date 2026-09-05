@@ -1,0 +1,1707 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: projects
+    description: World Forge projects and analysis
+  - name: automation
+    description: API-key authenticated coding-agent operations
+  - name: mcp
+    description: Model Context Protocol transport
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /projects:
+    get:
+      operationId: listProjects
+      tags: [projects]
+      summary: List world projects
+      responses:
+        "200":
+          description: World projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectSummary"
+    post:
+      operationId: createProject
+      tags: [projects]
+      summary: Create a world project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectInput"
+      responses:
+        "201":
+          description: Created project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+  /projects/{projectId}:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getProject
+      tags: [projects]
+      summary: Get a world project
+      responses:
+        "200":
+          description: World project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404":
+          description: Project not found
+    patch:
+      operationId: updateProject
+      tags: [projects]
+      summary: Update project settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectUpdate"
+      responses:
+        "200":
+          description: Updated project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+  /projects/{projectId}/analysis:
+    post:
+      operationId: analyzeProject
+      tags: [projects]
+      summary: Analyze a concept image into a world build specification
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalysisInput"
+      responses:
+        "200":
+          description: Structured world analysis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisResult"
+  /projects/{projectId}/summary:
+    get:
+      operationId: getProjectSummary
+      tags: [projects]
+      summary: Get a compact project summary
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Project summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectSummary"
+  /projects/{projectId}/export:
+    get:
+      operationId: exportProject
+      tags: [projects]
+      summary: Get an Unreal-ready export bundle
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Export bundle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportBundle"
+  /v1/projects:
+    get:
+      operationId: listAgentProjects
+      tags: [automation]
+      summary: List projects available to an API key
+      security: [{ ApiKeyAuth: [] }]
+      responses:
+        "200":
+          description: Agent project summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AgentProjectSummary" }
+        "401": { description: Invalid or missing API key }
+    post:
+      operationId: createAgentProject
+      tags: [automation]
+      summary: Create a project through an agent
+      security: [{ ApiKeyAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProjectInput" }
+      responses:
+        "201":
+          description: Created project
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Project" }
+        "401": { description: Invalid or missing API key }
+  /v1/projects/{projectId}:
+    get:
+      operationId: getAgentProject
+      tags: [automation]
+      summary: Get a project and its latest persisted analysis
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Project
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Project" }
+        "404": { description: Project not found }
+  /v1/projects/{projectId}/analysis:
+    post:
+      operationId: startAgentAnalysis
+      tags: [automation]
+      summary: Start an asynchronous world analysis job
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentAnalysisInput" }
+      responses:
+        "202":
+          description: Analysis job accepted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnalysisJob" }
+  /v1/projects/{projectId}/assets:
+    post:
+      operationId: uploadAgentProjectView
+      tags: [automation]
+      summary: Attach an uploaded canonical or alternate project view
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProjectAssetInput" }
+      responses:
+        "201":
+          description: Stored project view
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectAssetResult" }
+  /v1/projects/{projectId}/assets/upload-url:
+    post:
+      operationId: requestAgentProjectUpload
+      tags: [automation]
+      summary: Request a signed direct-upload URL for a project image
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProjectUploadRequest" }
+      responses:
+        "200":
+          description: Signed upload details
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectUploadResult" }
+  /v1/analysis-jobs/{jobId}:
+    get:
+      operationId: getAgentAnalysisJob
+      tags: [automation]
+      summary: Poll an asynchronous analysis job
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Analysis job
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnalysisJob" }
+        "404": { description: Analysis job not found }
+  /v1/projects/{projectId}/confidence:
+    get:
+      operationId: getAgentProjectConfidence
+      tags: [automation]
+      summary: Get confidence and verification evidence
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Confidence review
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+  /v1/projects/{projectId}/export:
+    get:
+      operationId: exportAgentProject
+      tags: [automation]
+      summary: Get the Unreal-ready export bundle
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Export bundle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExportBundle" }
+  /mcp:
+    post:
+      operationId: callWorldForgeMcp
+      tags: [mcp]
+      summary: Call the World Forge MCP JSON-RPC transport
+      security: [{ ApiKeyAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/McpRequest" }
+      responses:
+        "200":
+          description: MCP JSON-RPC response
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: WorldForgeApiKey
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    Project:
+      type: object
+      required: [id, name, imageName, status, updatedAt, analysis]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        imageName: { type: string }
+        status:
+          type: string
+          enum: [draft, analyzing, ready]
+        updatedAt: { type: string }
+        analysis:
+          $ref: "#/components/schemas/AnalysisResult"
+    ProjectSummary:
+      type: object
+      required:
+        [
+          id,
+          name,
+          imageName,
+          status,
+          updatedAt,
+          landmarkCount,
+          assetCount,
+          mapSize,
+        ]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        imageName: { type: string }
+        status:
+          type: string
+          enum: [draft, analyzing, ready]
+        updatedAt: { type: string }
+        landmarkCount: { type: number }
+        assetCount: { type: number }
+        mapSize: { type: string }
+    AgentProjectSummary:
+      type: object
+      required: [id, name, imageName, status, updatedAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        imageName: { type: string }
+        status: { type: string }
+        updatedAt: { type: string }
+        confidence: { type: ["number", "null"] }
+    AnalysisJob:
+      type: object
+      required: [id, projectId, status, progress]
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        status:
+          type: string
+          enum: [queued, analyzing, completed, failed]
+        progress: { type: number, minimum: 0, maximum: 100 }
+        statusUrl: { type: string }
+        error: { type: ["string", "null"] }
+        result:
+          oneOf:
+            - $ref: "#/components/schemas/AnalysisResult"
+            - type: "null"
+    McpRequest:
+      type: object
+      additionalProperties: true
+    ProjectInput:
+      type: object
+      required: [name, imageName]
+      properties:
+        name: { type: string, minLength: 1 }
+        imageName: { type: string, minLength: 1 }
+    ProjectUpdate:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        status:
+          type: string
+          enum: [draft, analyzing, ready]
+    AnalysisInput:
+      type: object
+      required: [imageData, mapWidthMeters, mapDepthMeters, gridSizeMeters]
+      properties:
+        imageData: { type: string, minLength: 20 }
+        referenceImages:
+          type: array
+          maxItems: 8
+          items: { type: string, minLength: 20 }
+        mapWidthMeters: { type: number, minimum: 100 }
+        mapDepthMeters: { type: number, minimum: 100 }
+        gridSizeMeters: { type: number, minimum: 10 }
+        knownScale:
+          type: ["number", "null"]
+          minimum: 0
+        knownScalePixelDistance:
+          type: ["number", "null"]
+          minimum: 0
+        reprojectionErrorPixels:
+          type: ["number", "null"]
+          minimum: 0
+    AgentAnalysisInput:
+      type: object
+      required: [mapWidthMeters, mapDepthMeters, gridSizeMeters]
+      properties:
+        mapWidthMeters: { type: number, minimum: 100 }
+        mapDepthMeters: { type: number, minimum: 100 }
+        gridSizeMeters: { type: number, minimum: 10 }
+        knownScale: { type: ["number", "null"], minimum: 0 }
+        knownScalePixelDistance: { type: ["number", "null"], minimum: 0 }
+        reprojectionErrorPixels: { type: ["number", "null"], minimum: 0 }
+    ProjectAssetInput:
+      type: object
+      required: [role, objectPath]
+      properties:
+        role:
+          type: string
+          enum: [canonical, alternate]
+        objectPath: { type: string, pattern: "^/objects/" }
+        imageName: { type: string }
+    ProjectUploadRequest:
+      type: object
+      required: [role, fileName, contentType, size]
+      properties:
+        role:
+          type: string
+          enum: [canonical, alternate]
+        fileName: { type: string, minLength: 1 }
+        contentType: { type: string, pattern: "^image/" }
+        size: { type: number, minimum: 1, maximum: 15728640 }
+    ProjectUploadResult:
+      type: object
+      required: [uploadUrl, objectPath, expiresInSeconds, requiredHeaders]
+      properties:
+        uploadUrl: { type: string }
+        objectPath: { type: string }
+        expiresInSeconds: { type: number }
+        requiredHeaders:
+          type: object
+          additionalProperties: { type: string }
+    ProjectAssetResult:
+      type: object
+      required: [projectId, role, objectPath, imageName, alternateViewCount, hasCanonicalView]
+      properties:
+        projectId: { type: string }
+        role:
+          type: string
+          enum: [canonical, alternate]
+        objectPath: { type: string }
+        imageName: { type: string }
+        alternateViewCount: { type: number, minimum: 0, maximum: 8 }
+        hasCanonicalView: { type: boolean }
+    AnalysisResult:
+      type: object
+      required:
+        [confidence, map, layers, landmarks, assetTree, validations, prompt]
+      properties:
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        denseDepth:
+          $ref: "#/components/schemas/DenseDepthArtifact"
+        geometryVerification:
+          $ref: "#/components/schemas/GeometryVerification"
+        confidenceBreakdown:
+          $ref: "#/components/schemas/ConfidenceBreakdown"
+        calibrationEvidence:
+          $ref: "#/components/schemas/CalibrationEvidence"
+        cameraGeometryVerification:
+          $ref: "#/components/schemas/CameraGeometryVerification"
+        reconstruction:
+          $ref: "#/components/schemas/ReconstructionSpec"
+        depthMap:
+          $ref: "#/components/schemas/DepthMapSpec"
+        visualSurvey:
+          $ref: "#/components/schemas/VisualSurvey"
+        surveyAudit:
+          $ref: "#/components/schemas/SurveyAudit"
+        spatialRelations:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpatialRelation"
+        map:
+          $ref: "#/components/schemas/MapSpec"
+        layers:
+          type: array
+          items:
+            $ref: "#/components/schemas/LayerSpec"
+        landmarks:
+          type: array
+          items:
+            $ref: "#/components/schemas/LandmarkSpec"
+        assetTree:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetSpec"
+        validations:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationSpec"
+        prompt: { type: string }
+    MapSpec:
+      type: object
+      required:
+        [
+          widthMeters,
+          depthMeters,
+          maxElevationMeters,
+          gridSizeMeters,
+          chunkCount,
+        ]
+      properties:
+        widthMeters: { type: number }
+        depthMeters: { type: number }
+        maxElevationMeters: { type: number }
+        gridSizeMeters: { type: number }
+        chunkCount: { type: number }
+        origin: { type: string }
+        coordinateSystem: { type: string }
+    LayerSpec:
+      type: object
+      required: [id, name, type, coverage, color, notes]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type: { type: string }
+        coverage: { type: number }
+        color: { type: string }
+        notes: { type: string }
+    LandmarkSpec:
+      type: object
+      required:
+        [
+          id,
+          name,
+          type,
+          x,
+          y,
+          z,
+          rotation,
+          scale,
+          footprint,
+          confidence,
+          assetCount,
+        ]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type: { type: string }
+        x: { type: number }
+        y: { type: number }
+        z: { type: number }
+        rotation: { type: number }
+        scale: { type: number }
+        footprint: { type: string }
+        confidence: { type: number }
+        assetCount: { type: number }
+        uncertaintyMeters:
+          type: ["number", "null"]
+          minimum: 0
+        sourceSurveyObjectId: { type: string }
+        depthEvidence:
+          $ref: "#/components/schemas/DepthEvidence"
+    AssetSpec:
+      type: object
+      required:
+        [
+          id,
+          name,
+          parent,
+          category,
+          kind,
+          count,
+          productionCount,
+          placementCount,
+          isReusable,
+          dimensions,
+          instruction,
+          sourcePrompt,
+          placementInstructions,
+          readEvidence,
+          placements,
+        ]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        parent: { type: string }
+        category: { type: string }
+        kind: { type: string }
+        count: { type: number }
+        productionCount: { type: number }
+        placementCount: { type: number }
+        isReusable: { type: boolean }
+        dimensions: { type: string }
+        dimensionsMeters:
+          $ref: "#/components/schemas/AssetDimensionsMeters"
+        instruction: { type: string }
+        sourcePrompt: { type: string }
+        placementInstructions: { type: string }
+        readEvidence: { type: string }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        placementPattern:
+          $ref: "#/components/schemas/AssetPlacementPattern"
+        placements:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetPlacement"
+    AssetPlacement:
+      type: object
+      required: [id, assetId, parentLandmark, x, y, z, rotation, scale, reason]
+      properties:
+        id: { type: string }
+        assetId: { type: string }
+        parentLandmark: { type: string }
+        x: { type: number }
+        y: { type: number }
+        z: { type: number }
+        rotation: { type: number }
+        orientation:
+          $ref: "#/components/schemas/AssetOrientation"
+        scale: { type: number }
+        reason: { type: string }
+        uncertaintyMeters: { type: number, minimum: 0 }
+    AssetDimensionsMeters:
+      type: object
+      required: [x, y, z]
+      properties:
+        x: { type: number, exclusiveMinimum: 0 }
+        y: { type: number, exclusiveMinimum: 0 }
+        z: { type: number, exclusiveMinimum: 0 }
+    AssetOrientation:
+      type: object
+      required: [yaw, pitch, roll]
+      properties:
+        yaw: { type: number }
+        pitch: { type: number }
+        roll: { type: number }
+    AssetPlacementPattern:
+      type: object
+      required:
+        [
+          type,
+          center,
+          radiusX,
+          radiusY,
+          startAngleDegrees,
+          endAngleDegrees,
+          closed,
+          alignToTangent,
+          rotationOffsetDegrees,
+        ]
+      properties:
+        type:
+          type: string
+          enum: [ellipse, arc]
+        center:
+          $ref: "#/components/schemas/UnrealVectorMeters"
+        radiusX: { type: number, exclusiveMinimum: 0 }
+        radiusY: { type: number, exclusiveMinimum: 0 }
+        startAngleDegrees: { type: number }
+        endAngleDegrees: { type: number }
+        closed: { type: boolean }
+        alignToTangent: { type: boolean }
+        rotationOffsetDegrees: { type: number }
+    ConfidenceBreakdown:
+      type: object
+      required:
+        [
+          visualDetection,
+          scaleCalibration,
+          depthInference,
+          coverageCompleteness,
+          spatialConsistency,
+          overall,
+          target,
+          ceiling,
+          status,
+          notes,
+        ]
+      properties:
+        visualDetection: { type: number, minimum: 0, maximum: 1 }
+        scaleCalibration: { type: number, minimum: 0, maximum: 1 }
+        depthInference: { type: number, minimum: 0, maximum: 1 }
+        coverageCompleteness: { type: number, minimum: 0, maximum: 1 }
+        spatialConsistency: { type: number, minimum: 0, maximum: 1 }
+        depthEvidenceCoverage: { type: number, minimum: 0, maximum: 1 }
+        depthBandAgreement: { type: number, minimum: 0, maximum: 1 }
+        overall: { type: number, minimum: 0, maximum: 1 }
+        target: { type: number, minimum: 0, maximum: 1 }
+        ceiling: { type: number, minimum: 0, maximum: 1 }
+        status:
+          type: string
+          enum:
+            [target-met, needs-calibration, needs-more-views, review-required]
+        notes:
+          type: array
+          items: { type: string }
+    CalibrationEvidence:
+      type: object
+      required:
+        [
+          verificationStatus,
+          canonicalImageSha256,
+          alternateImageSha256s,
+          knownScaleMeters,
+          knownScalePixelDistance,
+          claimedReprojectionErrorPixels,
+          solver,
+          solverVersion,
+          notes,
+        ]
+      properties:
+        verificationStatus:
+          type: string
+          enum: [unverified-claim, solver-verified]
+        canonicalImageSha256: { type: string }
+        alternateImageSha256s:
+          type: array
+          items: { type: string }
+        knownScaleMeters:
+          type: ["number", "null"]
+        knownScalePixelDistance:
+          type: ["number", "null"]
+        claimedReprojectionErrorPixels:
+          type: ["number", "null"]
+        solver: { type: string }
+        solverVersion: { type: string }
+        notes:
+          type: array
+          items: { type: string }
+    CameraGeometryVerification:
+      type: object
+      required:
+        [
+          status,
+          imageHashes,
+          proposal,
+          solver,
+          solverVersion,
+          cameraIntrinsics,
+          cameraExtrinsics,
+          pointTracks,
+          inlierCount,
+          residualDistribution,
+          serverComputedResiduals,
+        ]
+      properties:
+        status:
+          type: string
+          enum: [verified, rejected, unavailable, failed]
+        imageHashes:
+          type: array
+          items: { type: string }
+        proposal:
+          $ref: "#/components/schemas/GeometryProposal"
+        solver:
+          type: string
+          enum: [colmap, pycolmap, none]
+        solverVersion: { type: string }
+        cameraIntrinsics:
+          type: array
+          items:
+            $ref: "#/components/schemas/CameraIntrinsics"
+        cameraExtrinsics:
+          type: array
+          items:
+            $ref: "#/components/schemas/CameraExtrinsics"
+        pointTracks:
+          type: array
+          items:
+            $ref: "#/components/schemas/PointTrack"
+        inlierCount: { type: number, minimum: 0 }
+        residualDistribution:
+          anyOf:
+            - $ref: "#/components/schemas/ResidualDistribution"
+            - type: "null"
+        serverComputedResiduals: { type: boolean }
+        error: { type: string }
+    GeometryProposal:
+      type: object
+      required:
+        [
+          provider,
+          model,
+          version,
+          status,
+          cameraIntrinsics,
+          cameraExtrinsics,
+          pointTracks,
+        ]
+      properties:
+        provider:
+          type: string
+          enum: [depth-anything-3, vggt, none]
+        model: { type: string }
+        version: { type: string }
+        status:
+          type: string
+          enum: [ready, unavailable, failed]
+        cameraIntrinsics:
+          type: array
+          items:
+            $ref: "#/components/schemas/CameraIntrinsics"
+        cameraExtrinsics:
+          type: array
+          items:
+            $ref: "#/components/schemas/CameraExtrinsics"
+        pointTracks:
+          type: array
+          items:
+            $ref: "#/components/schemas/PointTrack"
+        error: { type: string }
+    CameraIntrinsics:
+      type: object
+      required: [imageHash, width, height, fx, fy, cx, cy, distortion]
+      properties:
+        imageHash: { type: string }
+        width: { type: number, minimum: 2 }
+        height: { type: number, minimum: 2 }
+        fx: { type: number, exclusiveMinimum: 0 }
+        fy: { type: number, exclusiveMinimum: 0 }
+        cx: { type: number }
+        cy: { type: number }
+        distortion:
+          type: array
+          items: { type: number }
+    CameraExtrinsics:
+      type: object
+      required: [imageHash, rotation, translation, cameraCenter]
+      properties:
+        imageHash: { type: string }
+        rotation:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items:
+            type: array
+            minItems: 3
+            maxItems: 3
+            items: { type: number }
+        translation:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items: { type: number }
+        cameraCenter:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items: { type: number }
+    PointTrack:
+      type: object
+      required: [id, xyz, observations]
+      properties:
+        id: { type: string }
+        xyz:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items: { type: number }
+        observations:
+          type: array
+          items:
+            $ref: "#/components/schemas/PointTrackObservation"
+    PointTrackObservation:
+      type: object
+      required: [imageHash, x, y]
+      properties:
+        imageHash: { type: string }
+        x: { type: number }
+        y: { type: number }
+        residualPixels: { type: number, minimum: 0 }
+    ResidualDistribution:
+      type: object
+      required:
+        [
+          totalCount,
+          inlierCount,
+          outlierCount,
+          inlierThresholdPixels,
+          meanPixels,
+          medianPixels,
+          rmsPixels,
+          p95Pixels,
+          maxPixels,
+        ]
+      properties:
+        totalCount: { type: number, minimum: 0 }
+        inlierCount: { type: number, minimum: 0 }
+        outlierCount: { type: number, minimum: 0 }
+        inlierThresholdPixels: { type: number, minimum: 0 }
+        meanPixels: { type: number, minimum: 0 }
+        medianPixels: { type: number, minimum: 0 }
+        rmsPixels: { type: number, minimum: 0 }
+        p95Pixels: { type: number, minimum: 0 }
+        maxPixels: { type: number, minimum: 0 }
+    ReconstructionSpec:
+      type: object
+      required:
+        [
+          mode,
+          cameraModel,
+          depthMethod,
+          terrainMethod,
+          occlusionMethod,
+          virtualViewCount,
+          limitations,
+        ]
+      properties:
+        mode:
+          type: string
+          enum: [single-view-3d-hypothesis, multi-view-verified]
+        cameraModel: { type: string }
+        depthMethod: { type: string }
+        terrainMethod: { type: string }
+        occlusionMethod: { type: string }
+        virtualViewCount: { type: number, minimum: 0 }
+        limitations:
+          type: array
+          items: { type: string }
+    DenseDepthArtifact:
+      type: object
+      required:
+        [
+          provider,
+          model,
+          version,
+          source,
+          status,
+          width,
+          height,
+          encoding,
+          depthUnit,
+          valuesBase64,
+          minDepth,
+          maxDepth,
+          focalLengthPx,
+          normalsBase64,
+          uncertaintyBase64,
+          uncertaintyUnit,
+          uncertaintyMean,
+          checksumSha256,
+          inputImageSha256,
+        ]
+      properties:
+        provider:
+          type: string
+          enum: [depth-pro, depth-anything, metric3d, local-image-cues]
+        model: { type: string }
+        version: { type: string }
+        source:
+          type: string
+          enum: [configured-http, local-onnx, local-fallback]
+        status:
+          type: string
+          enum: [ready, fallback, failed]
+        width: { type: number, minimum: 0 }
+        height: { type: number, minimum: 0 }
+        encoding:
+          type: string
+          enum: [float32-base64]
+        depthUnit:
+          type: string
+          enum: [relative, meters]
+        valuesBase64:
+          type: ["string", "null"]
+        minDepth:
+          type: ["number", "null"]
+        maxDepth:
+          type: ["number", "null"]
+        focalLengthPx:
+          type: ["number", "null"]
+        normalsBase64:
+          type: ["string", "null"]
+        uncertaintyBase64:
+          type: ["string", "null"]
+        uncertaintyUnit:
+          type: ["string", "null"]
+          enum: [relative, meters, null]
+        uncertaintyMean:
+          type: ["number", "null"]
+        checksumSha256:
+          type: ["string", "null"]
+        inputImageSha256: { type: string }
+        failureReason: { type: string }
+    GeometryVerification:
+      type: object
+      required:
+        [
+          status,
+          solver,
+          solverVersion,
+          canonicalImageSha256,
+          requestedAlternateViewCount,
+          verifiedAlternateViewCount,
+          cameraPoseVerified,
+          aggregateReprojectionRmsPixels,
+          registrations,
+          notes,
+        ]
+      properties:
+        status:
+          type: string
+          enum:
+            [
+              not-requested,
+              insufficient-verified-views,
+              views-registered,
+              solver-verified,
+            ]
+        solver:
+          type: string
+          enum: [opencv-orb-homography, configured-camera-solver]
+        solverVersion: { type: string }
+        canonicalImageSha256: { type: string }
+        requestedAlternateViewCount: { type: number, minimum: 0 }
+        verifiedAlternateViewCount: { type: number, minimum: 0 }
+        cameraPoseVerified: { type: boolean }
+        aggregateReprojectionRmsPixels:
+          type: ["number", "null"]
+          minimum: 0
+        registrations:
+          type: array
+          items:
+            $ref: "#/components/schemas/ViewRegistration"
+        notes:
+          type: array
+          items: { type: string }
+    ViewRegistration:
+      type: object
+      required:
+        [
+          imageSha256,
+          status,
+          keypointCountCanonical,
+          keypointCountAlternate,
+          candidateMatchCount,
+          inlierCount,
+          inlierRatio,
+          reprojectionRmsPixels,
+          homography,
+          reason,
+        ]
+      properties:
+        imageSha256: { type: string }
+        status:
+          type: string
+          enum: [registered, rejected, failed]
+        keypointCountCanonical: { type: number, minimum: 0 }
+        keypointCountAlternate: { type: number, minimum: 0 }
+        candidateMatchCount: { type: number, minimum: 0 }
+        inlierCount: { type: number, minimum: 0 }
+        inlierRatio: { type: number, minimum: 0, maximum: 1 }
+        reprojectionRmsPixels:
+          type: ["number", "null"]
+          minimum: 0
+        homography:
+          type: ["array", "null"]
+          items: { type: number }
+          minItems: 9
+          maxItems: 9
+        reason: { type: string }
+    DepthMapSpec:
+      type: object
+      required: [status, provider, model, relativeOnly]
+      properties:
+        status:
+          type: string
+          enum: [ready, unavailable]
+        provider: { type: string }
+        model: { type: string }
+        relativeOnly: { type: boolean }
+        width: { type: number }
+        height: { type: number }
+        min: { type: number }
+        max: { type: number }
+        mean: { type: number }
+        inferenceMilliseconds: { type: number }
+        sourceImageSha256: { type: string }
+        previewUrl: { type: string }
+        error: { type: string }
+    VisualSurvey:
+      type: object
+      required:
+        [
+          version,
+          cameraHypothesis,
+          depthBands,
+          objects,
+          terrainContours,
+          waterlines,
+          lightAndAtmosphere,
+          ambiguities,
+          coverageChecklist,
+        ]
+      properties:
+        version: { type: number, enum: [1] }
+        cameraHypothesis:
+          $ref: "#/components/schemas/SurveyCameraHypothesis"
+        depthBands:
+          type: array
+          items:
+            $ref: "#/components/schemas/SurveyDepthBand"
+        objects:
+          type: array
+          items:
+            $ref: "#/components/schemas/SurveyObject"
+        terrainContours:
+          type: array
+          items:
+            $ref: "#/components/schemas/SurveyContour"
+        waterlines:
+          type: array
+          items:
+            $ref: "#/components/schemas/SurveyWaterline"
+        lightAndAtmosphere:
+          type: array
+          items:
+            $ref: "#/components/schemas/SurveyLightSignal"
+        ambiguities:
+          type: array
+          items: { type: string }
+        coverageChecklist:
+          $ref: "#/components/schemas/SurveyCoverageChecklist"
+    SurveyCameraHypothesis:
+      type: object
+      required: [horizonY, perspectiveStrength, viewElevation, vanishingDirections]
+      properties:
+        horizonY: { type: number, minimum: 0, maximum: 1 }
+        perspectiveStrength:
+          type: string
+          enum: [weak, medium, strong]
+        viewElevation:
+          type: string
+          enum: [low, eye-level, elevated, aerial]
+        vanishingDirections:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/SurveyVanishingDirection"
+    SurveyVanishingDirection:
+      type: object
+      required: [x, y, evidence]
+      properties:
+        x: { type: number, minimum: 0, maximum: 1 }
+        y: { type: number, minimum: 0, maximum: 1 }
+        evidence: { type: string, minLength: 1 }
+    SurveyDepthBand:
+      type: object
+      required: [id, order, range, evidence]
+      properties:
+        id: { type: string, minLength: 1 }
+        order: { type: number, minimum: 0 }
+        range:
+          type: string
+          enum: [foreground, midground, background, distant]
+        evidence: { type: string, minLength: 1 }
+    SurveyObject:
+      type: object
+      required:
+        [
+          id,
+          name,
+          category,
+          bbox,
+          depthBand,
+          groundContact,
+          occludes,
+          occludedBy,
+          visibleParts,
+          repeatedPattern,
+          evidence,
+          confidence,
+        ]
+      properties:
+        id: { type: string, minLength: 1 }
+        name: { type: string, minLength: 1 }
+        category: { type: string, minLength: 1 }
+        bbox:
+          $ref: "#/components/schemas/NormalizedBoundingBox"
+        depthBand: { type: string, minLength: 1 }
+        depthBandId: { type: string }
+        groundContact:
+          $ref: "#/components/schemas/NormalizedPoint"
+        occludes:
+          type: array
+          items: { type: string }
+        occludedBy:
+          type: array
+          items: { type: string }
+        visibleParts:
+          type: array
+          items: { type: string }
+        repeatedPattern: { type: string }
+        evidence: { type: string, minLength: 1 }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+    NormalizedBoundingBox:
+      type: object
+      required: [x, y, width, height]
+      properties:
+        x: { type: number, minimum: 0, maximum: 1 }
+        y: { type: number, minimum: 0, maximum: 1 }
+        width: { type: number, exclusiveMinimum: 0, maximum: 1 }
+        height: { type: number, exclusiveMinimum: 0, maximum: 1 }
+    NormalizedPoint:
+      type: object
+      required: [x, y]
+      properties:
+        x: { type: number, minimum: 0, maximum: 1 }
+        y: { type: number, minimum: 0, maximum: 1 }
+    SurveyContour:
+      type: object
+      required: [kind, points, evidence]
+      properties:
+        kind: { type: string, minLength: 1 }
+        points:
+          type: array
+          minItems: 2
+          items:
+            $ref: "#/components/schemas/NormalizedPoint"
+        evidence: { type: string, minLength: 1 }
+    SurveyWaterline:
+      type: object
+      required: [points, evidence]
+      properties:
+        points:
+          type: array
+          minItems: 2
+          items:
+            $ref: "#/components/schemas/NormalizedPoint"
+        evidence: { type: string, minLength: 1 }
+    SurveyLightSignal:
+      type: object
+      required: [signal, depthImplication]
+      properties:
+        signal: { type: string }
+        depthImplication: { type: string }
+    SurveyCoverageChecklist:
+      type: object
+      required:
+        [
+          terrain,
+          coastlines,
+          settlements,
+          fortifications,
+          ports,
+          boats,
+          monuments,
+          ruins,
+          cemeteries,
+          vegetation,
+          lights,
+          distantSilhouettes,
+        ]
+      properties:
+        terrain: { type: boolean }
+        coastlines: { type: boolean }
+        settlements: { type: boolean }
+        fortifications: { type: boolean }
+        ports: { type: boolean }
+        boats: { type: boolean }
+        monuments: { type: boolean }
+        ruins: { type: boolean }
+        cemeteries: { type: boolean }
+        vegetation: { type: boolean }
+        lights: { type: boolean }
+        distantSilhouettes: { type: boolean }
+    SurveyAudit:
+      type: object
+      required:
+        [
+          status,
+          objectCount,
+          uniqueObjectCount,
+          linkedLandmarkCount,
+          unlinkedLandmarkCount,
+          missingSurveyObjectCount,
+          invalidGeometryCount,
+          duplicateIdCount,
+          notes,
+        ]
+      properties:
+        status:
+          type: string
+          enum: [pass, review-required]
+        objectCount: { type: number, minimum: 0 }
+        uniqueObjectCount: { type: number, minimum: 0 }
+        linkedLandmarkCount: { type: number, minimum: 0 }
+        unlinkedLandmarkCount: { type: number, minimum: 0 }
+        missingSurveyObjectCount: { type: number, minimum: 0 }
+        invalidGeometryCount: { type: number, minimum: 0 }
+        duplicateIdCount: { type: number, minimum: 0 }
+        notes:
+          type: array
+          items: { type: string }
+    DepthEvidence:
+      type: object
+      required:
+        [
+          depthBand,
+          normalizedDepth,
+          depthMeters,
+          uncertaintyMeters,
+          visualUncertaintyMeters,
+          uncertaintyRatio,
+          uncertaintyCrossCheck,
+          sampleCount,
+          crossCheck,
+          source,
+        ]
+      properties:
+        depthBand:
+          type: string
+          enum: [foreground, midground, background, distant, unknown]
+        normalizedDepth:
+          type: ["number", "null"]
+          minimum: 0
+          maximum: 1
+        depthMeters:
+          type: ["number", "null"]
+          minimum: 0
+        uncertaintyMeters: { type: number, minimum: 0 }
+        visualUncertaintyMeters:
+          type: ["number", "null"]
+          minimum: 0
+        uncertaintyRatio:
+          type: ["number", "null"]
+          minimum: 0
+        uncertaintyCrossCheck:
+          type: string
+          enum: [supported, review-required, unavailable]
+        sampleCount: { type: number, minimum: 0 }
+        crossCheck:
+          type: string
+          enum: [supported, nearby, review-required, unavailable]
+        source:
+          type: string
+          enum: [dense-depth]
+    SpatialRelation:
+      type: object
+      required:
+        [
+          id,
+          fromId,
+          fromName,
+          toId,
+          toName,
+          deltaX,
+          deltaY,
+          deltaZ,
+          horizontalDistanceMeters,
+          distance3dMeters,
+          bearingDegrees,
+          verticalAngleDegrees,
+          uncertaintyMeters,
+          confidence,
+        ]
+      properties:
+        id: { type: string }
+        fromId: { type: string }
+        fromName: { type: string }
+        toId: { type: string }
+        toName: { type: string }
+        deltaX: { type: number }
+        deltaY: { type: number }
+        deltaZ: { type: number }
+        horizontalDistanceMeters: { type: number }
+        distance3dMeters: { type: number }
+        bearingDegrees: { type: number }
+        verticalAngleDegrees: { type: number }
+        uncertaintyMeters: { type: number, minimum: 0 }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+    ValidationSpec:
+      type: object
+      required: [id, severity, title, detail]
+      properties:
+        id: { type: string }
+        severity:
+          type: string
+          enum: [pass, warning, critical]
+        title: { type: string }
+        detail: { type: string }
+    ExportBundle:
+      type: object
+      required: [filename, generatedAt, unrealScript, manifest, unrealScene]
+      properties:
+        filename: { type: string }
+        generatedAt: { type: string }
+        unrealScript: { type: string }
+        manifest: { type: string }
+        unrealScene:
+          $ref: "#/components/schemas/UnrealScene"
+    UnrealVectorMeters:
+      type: object
+      required: [x, y, z]
+      properties:
+        x: { type: number }
+        y: { type: number }
+        z: { type: number }
+    UnrealVectorCentimeters:
+      type: object
+      required: [x, y, z]
+      properties:
+        x: { type: number }
+        y: { type: number }
+        z: { type: number }
+    UnrealRotation:
+      type: object
+      required: [yaw, pitch, roll]
+      properties:
+        yaw: { type: number }
+        pitch: { type: number }
+        roll: { type: number }
+    UnrealTransform:
+      type: object
+      required: [sourceMeters, unrealCentimeters]
+      properties:
+        sourceMeters:
+          type: object
+          required: [location, rotationDegrees, scale]
+          properties:
+            location: { $ref: "#/components/schemas/UnrealVectorMeters" }
+            rotationDegrees: { $ref: "#/components/schemas/UnrealRotation" }
+            scale: { type: number }
+        unrealCentimeters:
+          type: object
+          required: [location, rotationDegrees, scale]
+          properties:
+            location: { $ref: "#/components/schemas/UnrealVectorCentimeters" }
+            rotationDegrees: { $ref: "#/components/schemas/UnrealRotation" }
+            scale: { type: number }
+    UnrealSplinePoint:
+      type: object
+      required: [index, sourceMeters, unrealCentimeters]
+      properties:
+        index: { type: number, minimum: 0 }
+        sourceMeters: { $ref: "#/components/schemas/UnrealVectorMeters" }
+        unrealCentimeters: { $ref: "#/components/schemas/UnrealVectorCentimeters" }
+    UnrealSpline:
+      type: object
+      required: [id, name, type, closed, widthMeters, source, points]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type:
+          type: string
+          enum: [coastline, road]
+        closed: { type: boolean }
+        widthMeters: { type: number, minimum: 0 }
+        source: { type: string }
+        points:
+          type: array
+          minItems: 2
+          items: { $ref: "#/components/schemas/UnrealSplinePoint" }
+    UnrealLandscape:
+      type: object
+      required:
+        [
+          editable,
+          actorClass,
+          source,
+          dimensionsMeters,
+          dimensionsUnrealCentimeters,
+          originMeters,
+          originUnrealCentimeters,
+          resolution,
+          sampleSpacingMeters,
+          sampleSpacingUnrealCentimeters,
+          heightEncoding,
+          heightSamplesMeters,
+          heightmapR16Base64,
+          importRecipe,
+        ]
+      properties:
+        editable: { type: boolean }
+        actorClass: { type: string }
+        source: { type: string }
+        dimensionsMeters: { type: object, additionalProperties: { type: number } }
+        dimensionsUnrealCentimeters:
+          type: object
+          additionalProperties: { type: number }
+        originMeters: { $ref: "#/components/schemas/UnrealVectorMeters" }
+        originUnrealCentimeters:
+          $ref: "#/components/schemas/UnrealVectorCentimeters"
+        resolution:
+          type: object
+          required:
+            [samplesX, samplesY, quadsX, quadsY, componentSizeQuads, componentsX, componentsY]
+          properties:
+            samplesX: { type: number, minimum: 2 }
+            samplesY: { type: number, minimum: 2 }
+            quadsX: { type: number, minimum: 1 }
+            quadsY: { type: number, minimum: 1 }
+            componentSizeQuads: { type: number, minimum: 1 }
+            componentsX: { type: number, minimum: 1 }
+            componentsY: { type: number, minimum: 1 }
+        sampleSpacingMeters:
+          type: object
+          required: [x, y]
+          properties:
+            x: { type: number, exclusiveMinimum: 0 }
+            y: { type: number, exclusiveMinimum: 0 }
+        sampleSpacingUnrealCentimeters:
+          type: object
+          required: [x, y]
+          properties:
+            x: { type: number, exclusiveMinimum: 0 }
+            y: { type: number, exclusiveMinimum: 0 }
+        heightEncoding:
+          type: object
+          required:
+            [values, importToUnreal, heightmapFilename, heightmapFormat, landscapeScaleZPercent]
+          properties:
+            values: { type: string }
+            importToUnreal: { type: string }
+            heightmapFilename: { type: string }
+            heightmapFormat: { type: string }
+            landscapeScaleZPercent: { type: number, exclusiveMinimum: 0 }
+        heightSamplesMeters:
+          type: array
+          minItems: 4
+          items: { type: number }
+        heightmapR16Base64: { type: string }
+        importRecipe:
+          type: object
+          required:
+            [
+              target,
+              heightmapFilename,
+              resolution,
+              sectionSizeQuads,
+              sectionsPerComponent,
+              components,
+              locationUnrealCentimeters,
+              scale,
+              steps,
+            ]
+          properties:
+            target: { type: string }
+            heightmapFilename: { type: string }
+            resolution: { type: string }
+            sectionSizeQuads: { type: number, minimum: 1 }
+            sectionsPerComponent: { type: number, minimum: 1 }
+            components: { type: string }
+            locationUnrealCentimeters:
+              $ref: "#/components/schemas/UnrealVectorCentimeters"
+            scale:
+              type: object
+              required: [xCentimetersPerQuad, yCentimetersPerQuad, zPercent]
+              properties:
+                xCentimetersPerQuad: { type: number, exclusiveMinimum: 0 }
+                yCentimetersPerQuad: { type: number, exclusiveMinimum: 0 }
+                zPercent: { type: number, exclusiveMinimum: 0 }
+            steps:
+              type: array
+              minItems: 1
+              items: { type: string }
+    UnrealProxyActor:
+      type: object
+      required: [id, label, actorClass, assetId, editablePurpose, proxyMeshPath, boundsMeters, confidence, uncertaintyMeters, transform, tags]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        actorClass: { type: string }
+        assetId: { type: string }
+        editablePurpose: { type: string }
+        proxyMeshPath: { type: string }
+        boundsMeters: { $ref: "#/components/schemas/UnrealVectorMeters" }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        uncertaintyMeters: { type: number, minimum: 0, nullable: true }
+        transform: { $ref: "#/components/schemas/UnrealTransform" }
+        tags:
+          type: array
+          items: { type: string }
+    UnrealInstance:
+      type: object
+      required: [id, parentLandmark, reason, uncertaintyMeters, sourceMeters, unrealCentimeters]
+      properties:
+        id: { type: string }
+        parentLandmark: { type: string }
+        reason: { type: string }
+        uncertaintyMeters: { type: number, minimum: 0, nullable: true }
+        sourceMeters:
+          type: object
+          required: [location, rotationDegrees, scale]
+          properties:
+            location: { $ref: "#/components/schemas/UnrealVectorMeters" }
+            rotationDegrees: { $ref: "#/components/schemas/UnrealRotation" }
+            scale: { type: number }
+        unrealCentimeters:
+          type: object
+          required: [location, rotationDegrees, scale]
+          properties:
+            location: { $ref: "#/components/schemas/UnrealVectorCentimeters" }
+            rotationDegrees: { $ref: "#/components/schemas/UnrealRotation" }
+            scale: { type: number }
+    UnrealHierarchicalInstances:
+      type: object
+      required:
+        [id, label, sourceAssetId, sourceAssetName, meshSlots, reusable, productionCount, declaredPlacementCount, exportedTransformCount, remainingProceduralCount, replacementPath, fallbackMeshPath, transforms]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        sourceAssetId: { type: string }
+        sourceAssetName: { type: string }
+        meshSlots: { type: number, minimum: 1 }
+        reusable: { type: boolean }
+        productionCount: { type: number, minimum: 1 }
+        declaredPlacementCount: { type: number, minimum: 1 }
+        exportedTransformCount: { type: number, minimum: 0 }
+        remainingProceduralCount: { type: number, minimum: 0 }
+        replacementPath: { type: string }
+        fallbackMeshPath: { type: string }
+        dimensionsMeters:
+          $ref: "#/components/schemas/AssetDimensionsMeters"
+        placementPattern:
+          $ref: "#/components/schemas/AssetPlacementPattern"
+        transforms:
+          type: array
+          items: { $ref: "#/components/schemas/UnrealInstance" }
+    UnrealScene:
+      type: object
+      required: [version, format, units, coordinateSystem, landscape, splines, proxyActors, hierarchicalInstances]
+      properties:
+        version: { type: number, minimum: 1 }
+        format: { type: string }
+        units:
+          type: object
+          required: [source, target, metersToUnrealCentimeters, conversionRule]
+          properties:
+            source: { type: string, enum: [meters] }
+            target: { type: string, enum: [centimeters] }
+            metersToUnrealCentimeters: { type: number, const: 100 }
+            conversionRule: { type: string }
+        coordinateSystem:
+          type: object
+          required: [source, unreal, origin]
+          properties:
+            source: { type: string }
+            unreal: { type: string }
+            origin: { type: string }
+        landscape: { $ref: "#/components/schemas/UnrealLandscape" }
+        splines:
+          type: array
+          items: { $ref: "#/components/schemas/UnrealSpline" }
+        proxyActors:
+          type: array
+          items: { $ref: "#/components/schemas/UnrealProxyActor" }
+        hierarchicalInstances:
+          type: array
+          items: { $ref: "#/components/schemas/UnrealHierarchicalInstances" }

@@ -1,0 +1,76 @@
+# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
+
+# compiled output
+dist
+tmp
+out-tsc
+*.tsbuildinfo
+.expo
+.expo-shared
+
+# dependencies
+node_modules
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# misc
+/.sass-cache
+/connect.lock
+/coverage
+/libpeerconnection.log
+npm-debug.log
+yarn-error.log
+testem.log
+/typings
+
+# System Files
+.DS_Store
+Thumbs.db
+
+.cursor/rules/nx-rules.mdc
+.github/instructions/nx.instructions.md
+
+# Replit
+.cache/
+.local/
+ 
+# local secrets and bringup junk 
+.env 
+.env.* 
+!.env.example 
+_*.log 
+_pids.txt 
+_kairos_roles/ 
+*.bak 
+bringup1.py 
+check_esb.py 
+db_push.py 
+det_*.py 
+do_install.py 
+find_*.py 
+finish_ui_pg.py 
+fix_*.py 
+fix_*.sh 
+inst_*.py 
+pg_winget.py 
+reinstall.py 
+restart_and_start.py 
+run_wsl_*.py 
+set_allow.py 
+setup_pg_wsl*.sh 
+start_servers.py 
+_tmp_* 
