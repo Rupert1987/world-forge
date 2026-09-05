@@ -41,10 +41,21 @@ export async function createApiKey(label: string, ownerId: string) {
   return { ...record, key: issued.rawKey };
 }
 
-function getBearerToken(req: Request) {
-  const authorization = req.header("authorization");
+export function resolvePresentedApiKey(headers: {
+  authorization?: string | null;
+  "x-api-key"?: string | null;
+}) {
+  const authorization = headers.authorization ?? undefined;
   if (authorization?.startsWith("Bearer ")) return authorization.slice(7).trim();
-  return req.header("x-api-key")?.trim();
+  const headerKey = headers["x-api-key"] ?? undefined;
+  return headerKey?.trim() || undefined;
+}
+
+function getBearerToken(req: Request) {
+  return resolvePresentedApiKey({
+    authorization: req.header("authorization"),
+    "x-api-key": req.header("x-api-key"),
+  });
 }
 
 export async function authenticateApiKey(req: Request, res: Response, next: NextFunction) {

@@ -15,6 +15,36 @@ const VIEW_GUIDE = [
 
 const MULTI_VIEW_PROMPT = `Create the same open-world environment as three consistent concept views. ${VIEW_GUIDE.map((view) => view.prompt).join(' ')} Preserve identical landmarks, materials, lighting language and relative scale across all views. Do not redesign or add objects between angles.`;
 
+function clientExportReadiness(analysis: AnalysisResult) {
+  const camera = analysis.cameraGeometryVerification;
+  const poseVerified =
+    camera?.status === "verified" && Boolean(camera.serverComputedResiduals);
+  const meters = analysis.calibrationEvidence?.knownScaleMeters;
+  const pixels = analysis.calibrationEvidence?.knownScalePixelDistance;
+  const metricScaleKnown =
+    typeof meters === "number" &&
+    meters > 0 &&
+    typeof pixels === "number" &&
+    pixels >= 10;
+  const failingChecks: string[] = [];
+  if (!poseVerified) failingChecks.push("camera-geometry-unverified");
+  if (!metricScaleKnown) failingChecks.push("metric-scale-unknown");
+  const tier =
+    poseVerified && metricScaleKnown
+      ? ("scale-locked" as const)
+      : poseVerified
+        ? ("verified" as const)
+        : ("draft" as const);
+  return {
+    tier,
+    poseVerified,
+    metricScaleKnown,
+    exportReadyCm: tier === "scale-locked",
+    exportReadyDraft: Boolean(analysis.map && analysis.landmarks?.length),
+    failingChecks,
+  };
+}
+
 export default function WorkspacePage() {
   const params = useParams<{ id?: string }>();
   const projectId = params.id || 'atlas-01';
@@ -78,16 +108,41 @@ export default function WorkspacePage() {
   }
 
   function saveSettings() {
-    updateProject.mutate({ projectId, data: { status: 'ready' } }, { onSuccess: () => { queryClient.invalidateQueries({ queryKey: getGetProjectQueryKey(projectId) }); setSavedNotice(true); window.setTimeout(() => setSavedNotice(false), 2500); } });
+    // Status "ready" is analysis-owned; never PATCH ready from the Save button.
+    updateProject.mutate({ projectId, data: { name: project?.name } }, { onSuccess: () => { queryClient.invalidateQueries({ queryKey: getGetProjectQueryKey(projectId) }); setSavedNotice(true); window.setTimeout(() => setSavedNotice(false), 2500); } });
   }
 
-  async function downloadExport() {
+  const exportReadiness = clientExportReadiness(analysis);
+
+  async function downloadExport(mode: 'cm' | 'draft' = 'cm') {
     setExportError('');
-    const response = await exportQuery.refetch();
-    if (response.data) {
+    if (mode === 'cm' && !exportReadiness.exportReadyCm) {
+      setExportError(`Unreal cm export locked (${exportReadiness.tier}). Fix: ${exportReadiness.failingChecks.join(', ') || 'complete analysis'}. Use Draft export for an unscaled hypothesis.`);
+      return;
+    }
+    try {
+      const url = mode === 'draft'
+        ? `/api/projects/${projectId}/export?draft=1`
+        : `/api/projects/${projectId}/export`;
+      const response = await fetch(url, { credentials: 'include' });
+      if (response.status === 409) {
+        const body = await response.json().catch(() => ({})) as { failingChecks?: string[]; tier?: string; message?: string };
+        setExportError(body.message ?? `Export blocked (${body.tier ?? 'locked'}): ${(body.failingChecks ?? []).join(', ')}`);
+        return;
+      }
+      if (!response.ok) {
+        setExportError('Export bundle is not available yet. Run analysis first, then try again.');
+        return;
+      }
+      const data = await response.json();
+      exportQuery.setQueryData?.(data);
+      // Store on local state via refetch cache fallback
+      (exportQuery as { data?: unknown }).data = data;
       setShowExport(true);
-    } else {
-      setExportError('Export bundle is not available yet. Run analysis first, then try again.');
+      // Prefer putting payload into react-query cache
+      queryClient.setQueryData([`/api/projects/${projectId}/export`], data);
+    } catch {
+      setExportError('Export request failed. Check the API and try again.');
     }
   }
 
@@ -96,12 +151,12 @@ export default function WorkspacePage() {
 
   return <WorldForgeShell><div className="min-h-[100dvh]">
     <PageMeta eyebrow="World workspace / analysis" title={project?.name ?? 'Untitled world'} description={`${project?.imageName ?? 'Concept reference'} · updated ${project ? new Date(project.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'just now'}`}>
-      <StatusPill status={project?.status ?? 'draft'} /><button onClick={() => setShowSetup(true)} data-testid="button-edit-analysis" className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2.5 text-sm font-semibold hover:border-primary/50 hover:bg-primary/5"><Pencil size={14} /> Configure</button><button onClick={downloadExport} disabled={exportQuery.isFetching} data-testid="button-export-project" className="flex items-center gap-2 rounded-md bg-foreground px-3 py-2.5 text-sm font-semibold text-background hover:-translate-y-0.5 disabled:opacity-50"><Download size={14} /> {exportQuery.isFetching ? 'Packing…' : 'Export Unreal'}</button>
+      <StatusPill status={project?.status ?? 'draft'} /><button onClick={() => setShowSetup(true)} data-testid="button-edit-analysis" className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2.5 text-sm font-semibold hover:border-primary/50 hover:bg-primary/5"><Pencil size={14} /> Configure</button><button type="button" onClick={() => downloadExport('draft')} disabled={exportQuery.isFetching || !exportReadiness.exportReadyDraft} title={!exportReadiness.exportReadyDraft ? 'Run analysis first' : 'Unscaled draft · units=arbitrary · pose=unsolved'} data-testid="button-export-draft" className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2.5 text-sm font-semibold hover:border-primary/50 hover:bg-primary/5 disabled:opacity-50"><Download size={14} /> Draft</button><button type="button" onClick={() => downloadExport('cm')} disabled={exportQuery.isFetching || !exportReadiness.exportReadyCm} title={exportReadiness.exportReadyCm ? 'Scale-locked Unreal cm export' : `Locked until scale-locked. Failing: ${exportReadiness.failingChecks.join(', ') || 'analysis'}`} data-testid="button-export-project" className="flex items-center gap-2 rounded-md bg-foreground px-3 py-2.5 text-sm font-semibold text-background hover:-translate-y-0.5 disabled:opacity-50"><Download size={14} /> {exportQuery.isFetching ? 'Packing…' : 'Export Unreal cm'}</button>
     </PageMeta>
     <div className="px-5 py-6 sm:px-8 lg:px-10">
       <ConfidenceBanner analysis={analysis} updatedAt={project?.updatedAt} />
       <MultiViewGuidePanel />
-      <WorkflowGuidePanel onConfigure={() => setShowSetup(true)} onExport={downloadExport} />
+      <WorkflowGuidePanel onConfigure={() => setShowSetup(true)} onExport={() => downloadExport(exportReadiness.exportReadyCm ? 'cm' : 'draft')} />
       {savedNotice && <div className="mb-4 flex items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-4 py-3 text-sm" data-testid="status-saved"><Check size={16} className="text-primary" /> Workspace settings saved to the forge.</div>}
       {exportError && <div className="mb-4 flex items-center justify-between rounded-md border border-accent/40 bg-accent/10 px-4 py-3 text-sm" data-testid="error-export"><span>{exportError}</span><button onClick={() => setExportError('')} data-testid="button-close-export-error"><X size={16} /></button></div>}
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(330px,.8fr)]">
@@ -287,30 +342,37 @@ function CalibrationEvidencePanel({ knownScale, knownScalePixelDistance, reproje
 function GeometryVerificationPanel({ analysis }: { analysis: AnalysisResult }) {
   const geometry = analysis.geometryVerification;
   if (!geometry) return null;
-  return <div className="wf-panel rounded-xl border border-border bg-card" data-testid="panel-geometry-verification"><div className="flex flex-col gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div><div className="wf-kicker text-primary">Server-computed geometry</div><h2 className="mt-1 text-[17px] font-semibold">Alternate-view registration</h2></div><span className={`rounded-full px-3 py-1.5 font-mono text-[10px] uppercase tracking-[.1em] ${geometry.status === 'views-registered' || geometry.status === 'solver-verified' ? 'bg-primary/10 text-primary' : 'bg-accent/15 text-accent-foreground'}`}>{geometry.status.replaceAll('-', ' ')}</span></div><div className="grid divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-5"><div className="px-4 py-4"><div className="wf-kicker text-muted-foreground">Solver</div><div className="mt-2 font-mono text-xs">{geometry.solver}</div></div><div className="px-4 py-4"><div className="wf-kicker text-muted-foreground">Verified views</div><div className="mt-2 font-mono text-sm font-semibold">{geometry.verifiedAlternateViewCount} / {geometry.requestedAlternateViewCount}</div></div><div className="px-4 py-4"><div className="wf-kicker text-muted-foreground">Registration RMS</div><div className="mt-2 font-mono text-sm font-semibold">{geometry.aggregateReprojectionRmsPixels === null ? '—' : `${geometry.aggregateReprojectionRmsPixels.toFixed(3)} px`}</div></div><div className="px-4 py-4"><div className="wf-kicker text-muted-foreground">Camera pose</div><div className="mt-2 font-mono text-sm font-semibold">{geometry.cameraPoseVerified ? 'verified' : 'not solved'}</div></div><div className="px-4 py-4"><div className="wf-kicker text-muted-foreground">Canonical hash</div><div className="mt-2 font-mono text-xs">{geometry.canonicalImageSha256.slice(0, 12)}…</div></div></div>{geometry.registrations.length > 0 && <div className="divide-y divide-border border-t border-border">{geometry.registrations.map((registration, index) => <div key={registration.imageSha256} className="grid gap-2 px-5 py-3 text-xs md:grid-cols-[80px_1fr_auto] md:items-center"><span className={`font-mono uppercase ${registration.status === 'registered' ? 'text-primary' : 'text-accent-foreground'}`}>View {index + 2}</span><span className="text-muted-foreground">{registration.reason}</span><span className="font-mono">{registration.inlierCount}/{registration.candidateMatchCount} inliers · {registration.reprojectionRmsPixels === null ? '—' : `${registration.reprojectionRmsPixels.toFixed(3)} px`}</span></div>)}</div>}<div className="border-t border-border bg-muted/30 px-5 py-4"><ul className="grid gap-2 text-xs leading-relaxed text-muted-foreground lg:grid-cols-3">{geometry.notes.map((note) => <li key={note} className="flex items-start"><ChevronRight size={14} className="mr-1.5 shrink-0 text-primary/50" /><span>{note}</span></li>)}</ul></div></div>;
+  return <div className="wf-panel rounded-xl border border-border bg-card" data-testid="panel-geometry-verification"><div className="flex flex-col gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div><div className="wf-kicker text-primary">Server-computed geometry</div><h2 className="mt-1 text-[17px] font-semibold">Alternate-view registration</h2></div><span className={`rounded-full px-3 py-1.5 font-mono text-[10px] uppercase tracking-[.1em] ${geometry.status === 'views-registered' || geometry.status === 'solver-verified' ? 'bg-primary/10 text-primary' : 'bg-accent/15 text-accent-foreground'}`}>{geometry.status.replaceAll('-', ' ')}</span></div><div className="grid divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-5"><div className="px-4 py-4"><div className="wf-kicker text-muted-foreground">Solver</div><div className="mt-2 font-mono text-xs">{geometry.solver}</div></div><div className="px-4 py-4"><div className="wf-kicker text-muted-foreground">Verified views</div><div className="mt-2 font-mono text-sm font-semibold">{geometry.verifiedAlternateViewCount} / {geometry.requestedAlternateViewCount}</div></div><div className="px-4 py-4"><div className="wf-kicker text-muted-foreground">Registration RMS</div><div className="mt-2 font-mono text-sm font-semibold">{geometry.aggregateReprojectionRmsPixels === null ? '—' : `${geometry.aggregateReprojectionRmsPixels.toFixed(3)} px`}</div></div><div className="px-4 py-4"><div className="wf-kicker text-muted-foreground">Camera pose</div><div className="mt-2 font-mono text-sm font-semibold">{(analysis.cameraGeometryVerification?.status === 'verified' || geometry.cameraPoseVerified) ? 'verified' : (analysis.cameraGeometryVerification?.status ?? 'not solved')}</div></div><div className="px-4 py-4"><div className="wf-kicker text-muted-foreground">Canonical hash</div><div className="mt-2 font-mono text-xs">{geometry.canonicalImageSha256.slice(0, 12)}…</div></div></div>{geometry.registrations.length > 0 && <div className="divide-y divide-border border-t border-border">{geometry.registrations.map((registration, index) => <div key={registration.imageSha256} className="grid gap-2 px-5 py-3 text-xs md:grid-cols-[80px_1fr_auto] md:items-center"><span className={`font-mono uppercase ${registration.status === 'registered' ? 'text-primary' : 'text-accent-foreground'}`}>View {index + 2}</span><span className="text-muted-foreground">{registration.reason}</span><span className="font-mono">{registration.inlierCount}/{registration.candidateMatchCount} inliers · {registration.reprojectionRmsPixels === null ? '—' : `${registration.reprojectionRmsPixels.toFixed(3)} px`}</span></div>)}</div>}<div className="border-t border-border bg-muted/30 px-5 py-4"><ul className="grid gap-2 text-xs leading-relaxed text-muted-foreground lg:grid-cols-3">{geometry.notes.map((note) => <li key={note} className="flex items-start"><ChevronRight size={14} className="mr-1.5 shrink-0 text-primary/50" /><span>{note}</span></li>)}</ul></div></div>;
 }
 
 function ProductionHandoffPanel({ analysis, onSave, saving }: { analysis: AnalysisResult; onSave: () => void; saving: boolean }) {
   const geometry = analysis.geometryVerification;
+  const readiness = clientExportReadiness(analysis);
+  const poseVerified = readiness.poseVerified || Boolean(geometry?.cameraPoseVerified);
   const verifiedAlternateViews = geometry?.verifiedAlternateViewCount ?? 0;
   const requestedAlternateViews = geometry?.requestedAlternateViewCount ?? 0;
   const totalVerifiedViews = verifiedAlternateViews + 1;
   const productionCount = analysis.assetTree.reduce((sum, asset) => sum + asset.productionCount, 0);
   const placementCount = analysis.assetTree.reduce((sum, asset) => sum + asset.placementCount, 0);
-  const nextStep = geometry?.cameraPoseVerified
-    ? 'Camera geometry is verified. Review the Unreal export and begin blockout.'
-    : totalVerifiedViews >= 3
-      ? 'Three scene views are registered. Add measured scale and a camera solver result for higher verification.'
-      : 'Upload View 02 and View 03 from the capture guide, then run the analysis again.';
+  const nextStep = readiness.exportReadyCm
+    ? 'Scale-locked. Export Unreal cm and begin blockout.'
+    : poseVerified && !readiness.metricScaleKnown
+      ? 'Pin a scale object: enter a known real-world length (m) and its matching pixel span (≥10px), then re-run analysis.'
+      : totalVerifiedViews >= 3 && !poseVerified
+        ? 'Views registered, but camera pose is still unsolved. Keep overlapping alternate angles and ensure COLMAP/geometry endpoints are configured.'
+        : 'Add an overlapping alternate view (left/right three-quarter of the same world), then re-run analysis. Registration strengthens verification before Unreal cm unlocks.';
   const viewStatus = geometry
     ? `${totalVerifiedViews} verified / ${requestedAlternateViews + 1} submitted`
     : '1 canonical view';
   const evidenceStatus = analysis.confidenceBreakdown?.status?.replaceAll('-', ' ') ?? 'current analysis';
+  const cameraDetail = analysis.cameraGeometryVerification
+    ? `${analysis.cameraGeometryVerification.status} · ${analysis.cameraGeometryVerification.solver}`
+    : 'metric pose gate';
   return <div className="wf-panel overflow-hidden rounded-xl border border-border bg-card" data-testid="panel-production-handoff">
     <div className="flex flex-col gap-4 border-b border-border px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-start gap-3">
         <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><ArrowDownToLine size={17} /></div>
-        <div><div className="wf-kicker text-primary">Ready for the next production step</div><h2 className="mt-1 text-[17px] font-semibold">Production handoff</h2><p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground">A practical snapshot of what is ready now and what will improve the next reconstruction pass.</p></div>
+        <div><div className="wf-kicker text-primary">Multi-angle approval loop · tier {readiness.tier}</div><h2 className="mt-1 text-[17px] font-semibold">Production handoff</h2><p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground">Hypothesis first. Unreal cm export unlocks only after overlapping multi-view pose verification and metric scale lock.</p></div>
       </div>
       <button onClick={onSave} disabled={saving} data-testid="button-save-workspace" className="flex shrink-0 items-center justify-center gap-2 rounded-md border border-border px-3 py-2 text-xs font-semibold hover:border-primary/50 hover:bg-primary/5 disabled:opacity-50"><Save size={14} /> {saving ? 'Saving…' : 'Save workspace'}</button>
     </div>
@@ -318,11 +380,11 @@ function ProductionHandoffPanel({ analysis, onSave, saving }: { analysis: Analys
       <HandoffMetric label="Scene views" value={viewStatus} detail={geometry?.status?.replaceAll('-', ' ') ?? 'single-view hypothesis'} />
       <HandoffMetric label="Current confidence" value={`${Math.round(analysis.confidence * 100)}%`} detail={evidenceStatus} />
       <HandoffMetric label="Unreal production" value={`${productionCount} unique meshes`} detail={`${placementCount} planned placements`} />
-      <HandoffMetric label="Camera pose" value={geometry?.cameraPoseVerified ? 'Verified' : 'Not solved'} detail="metric pose gate" />
+      <HandoffMetric label="Camera pose" value={poseVerified ? 'Verified' : 'Not solved'} detail={cameraDetail} />
     </div>
     <div className="flex items-start gap-3 border-t border-border bg-muted/30 px-5 py-4">
       <Gauge size={16} className="mt-0.5 shrink-0 text-primary" />
-      <div><div className="text-xs font-semibold">Recommended next action</div><p className="mt-1 text-xs leading-relaxed text-muted-foreground">{nextStep}</p></div>
+      <div><div className="text-xs font-semibold">Recommended next action</div><p className="mt-1 text-xs leading-relaxed text-muted-foreground" data-testid="text-handoff-next-action">{nextStep}</p>{!readiness.exportReadyCm && <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-accent-foreground">Blocked checks · {readiness.failingChecks.join(' · ') || 'none'}</p>}</div>
     </div>
   </div>;
 }
@@ -402,7 +464,7 @@ function WorkflowGuidePanel({ onConfigure, onExport }: { onConfigure: () => void
     { number: '03', title: 'Set the world envelope', detail: 'Enter map width, map depth and grid size in meters. Add a measured reference only when you know its real-world size.' },
     { number: '04', title: 'Run calibrated analysis', detail: 'World Forge inventories the scene, checks view registration, estimates relative depth and creates the editable asset and placement plan.' },
     { number: '05', title: 'Review before production', detail: 'Check confidence, warnings, registration, uncertainty and camera-pose status. Low-confidence values are hypotheses, not survey measurements.' },
-    { number: '06', title: 'Hand off to Unreal', detail: 'Review the Production handoff panel, then export the Unreal bundle. Coordinates are converted from World Forge meters to Unreal centimeters.' },
+    { number: '06', title: 'Hand off to Unreal', detail: 'Only after multi-view pose + metric scale-lock: export Unreal cm (WorldToMeters=100). Until then use Draft (arbitrary units, pose unsolved).' },
   ];
   return <section className="mb-6 rounded-xl border border-border bg-card" data-testid="panel-workflow-guide">
     <div className="flex flex-col gap-4 border-b border-border px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
@@ -592,7 +654,7 @@ function downloadTextFile(filename: string, content: string, type: string) {
   URL.revokeObjectURL(url);
 }
 
-function ExportDialog({ exportData, onClose }: { exportData?: { filename: string; generatedAt: string; unrealScript: string; manifest: string }; onClose: () => void }) {
+function ExportDialog({ exportData, onClose }: { exportData?: { filename: string; generatedAt: string; unrealScript: string; manifest: string; exportMetadata?: { units?: string; pose?: string; exportTier?: string; centimeterClaimsEnabled?: boolean; WorldToMeters?: number } }; onClose: () => void }) {
   const [tab, setTab] = useState<'script' | 'manifest'>('script');
   const [copied, setCopied] = useState(false);
   if (!exportData) return null;
@@ -603,7 +665,7 @@ function ExportDialog({ exportData, onClose }: { exportData?: { filename: string
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1800);
   }
-  return <div className="fixed inset-0 z-30 grid place-items-center bg-[hsl(198_38%_17%/.45)] p-5 backdrop-blur-sm"><div className="wf-panel relative w-full max-w-3xl overflow-hidden rounded-xl border border-border bg-card" data-testid="dialog-export-bundle"><button onClick={onClose} data-testid="button-close-export" className="absolute right-4 top-4 text-muted-foreground hover:text-foreground"><X size={18} /></button><div className="border-b border-border px-6 py-5"><div className="wf-kicker text-primary">Export bundle / Unreal ready</div><h2 className="mt-2 font-serif text-3xl">Editable Unreal handoff</h2><p className="mt-2 text-sm leading-relaxed text-muted-foreground">Download the Python importer and its evidence manifest. Run the `.py` file in Unreal Editor; it writes the R16 Landscape heightmap and creates editable splines, proxies and HISM groups.</p><p className="mt-3 font-mono text-[10px] uppercase tracking-[.08em] text-muted-foreground">Generated {new Date(exportData.generatedAt).toLocaleString()}</p></div><div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-6 pt-4"><div className="flex gap-1"><button onClick={() => setTab('script')} data-testid="button-export-script-tab" className={`border-b-2 px-2 pb-3 text-xs font-semibold ${tab === 'script' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground'}`}><FileCode2 size={14} className="mr-1.5 inline" />Unreal script</button><button onClick={() => setTab('manifest')} data-testid="button-export-manifest-tab" className={`border-b-2 px-2 pb-3 text-xs font-semibold ${tab === 'manifest' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground'}`}>Evidence manifest</button></div><button onClick={copyVisibleContent} data-testid="button-copy-export" className="mb-3 inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs font-semibold hover:bg-muted"><Copy size={13} />{copied ? 'Copied' : 'Copy visible'}</button></div><pre data-testid="text-export-content" className="wf-scroll max-h-[43vh] overflow-auto whitespace-pre-wrap bg-[hsl(198_38%_17%)] p-6 font-mono text-xs leading-relaxed text-[hsl(41_34%_91%)]">{visibleContent}</pre><div className="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center"><div className="mr-auto text-[11px] leading-relaxed text-muted-foreground">UE 5.x · World Forge meters → Unreal centimeters at import boundary</div><button onClick={() => downloadTextFile(exportData.filename, exportData.manifest, 'application/json')} data-testid="button-download-manifest" className="inline-flex items-center justify-center gap-2 rounded-md border border-border px-4 py-2.5 text-sm font-semibold hover:bg-muted"><ArrowDownToLine size={15} />Manifest .json</button><button onClick={() => downloadTextFile(scriptFilename, exportData.unrealScript, 'text/x-python')} data-testid="button-download-unreal-script" className="inline-flex items-center justify-center gap-2 rounded-md bg-foreground px-4 py-2.5 text-sm font-semibold text-background hover:-translate-y-0.5"><Download size={15} />Unreal importer .py</button></div></div></div>;
+  return <div className="fixed inset-0 z-30 grid place-items-center bg-[hsl(198_38%_17%/.45)] p-5 backdrop-blur-sm"><div className="wf-panel relative w-full max-w-3xl overflow-hidden rounded-xl border border-border bg-card" data-testid="dialog-export-bundle"><button onClick={onClose} data-testid="button-close-export" className="absolute right-4 top-4 text-muted-foreground hover:text-foreground"><X size={18} /></button><div className="border-b border-border px-6 py-5"><div className="wf-kicker text-primary">Export bundle / {exportData.exportMetadata?.centimeterClaimsEnabled === false ? `draft · ${exportData.exportMetadata?.units ?? "arbitrary"} · pose ${exportData.exportMetadata?.pose ?? "unsolved"}` : `Unreal cm · WorldToMeters=${exportData.exportMetadata?.WorldToMeters ?? 100}`}</div><h2 className="mt-2 font-serif text-3xl">Editable Unreal handoff</h2><p className="mt-2 text-sm leading-relaxed text-muted-foreground">{exportData.exportMetadata?.centimeterClaimsEnabled === false ? "Draft hypothesis only — units are arbitrary and camera pose is unsolved. Do not treat coordinates as survey centimeters." : "Download the Python importer and its evidence manifest. Run the `.py` file in Unreal Editor; meters convert to centimeters at the import boundary (×100)."}</p><p className="mt-3 font-mono text-[10px] uppercase tracking-[.08em] text-muted-foreground">Generated {new Date(exportData.generatedAt).toLocaleString()}</p></div><div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-6 pt-4"><div className="flex gap-1"><button onClick={() => setTab('script')} data-testid="button-export-script-tab" className={`border-b-2 px-2 pb-3 text-xs font-semibold ${tab === 'script' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground'}`}><FileCode2 size={14} className="mr-1.5 inline" />Unreal script</button><button onClick={() => setTab('manifest')} data-testid="button-export-manifest-tab" className={`border-b-2 px-2 pb-3 text-xs font-semibold ${tab === 'manifest' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground'}`}>Evidence manifest</button></div><button onClick={copyVisibleContent} data-testid="button-copy-export" className="mb-3 inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs font-semibold hover:bg-muted"><Copy size={13} />{copied ? 'Copied' : 'Copy visible'}</button></div><pre data-testid="text-export-content" className="wf-scroll max-h-[43vh] overflow-auto whitespace-pre-wrap bg-[hsl(198_38%_17%)] p-6 font-mono text-xs leading-relaxed text-[hsl(41_34%_91%)]">{visibleContent}</pre><div className="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center"><div className="mr-auto text-[11px] leading-relaxed text-muted-foreground">UE 5.x · World Forge meters → Unreal centimeters at import boundary</div><button onClick={() => downloadTextFile(exportData.filename, exportData.manifest, 'application/json')} data-testid="button-download-manifest" className="inline-flex items-center justify-center gap-2 rounded-md border border-border px-4 py-2.5 text-sm font-semibold hover:bg-muted"><ArrowDownToLine size={15} />Manifest .json</button><button onClick={() => downloadTextFile(scriptFilename, exportData.unrealScript, 'text/x-python')} data-testid="button-download-unreal-script" className="inline-flex items-center justify-center gap-2 rounded-md bg-foreground px-4 py-2.5 text-sm font-semibold text-background hover:-translate-y-0.5"><Download size={15} />Unreal importer .py</button></div></div></div>;
 }
 
 function WorkspaceLoading() { return <div className="p-5 sm:p-8 lg:p-10"><div className="h-10 w-64 animate-pulse rounded bg-muted" /><div className="mt-3 h-4 w-80 animate-pulse rounded bg-muted" /><div className="mt-10 grid gap-5 xl:grid-cols-[1.45fr,.8fr]"><div className="aspect-video animate-pulse rounded-xl bg-muted" /><div className="h-80 animate-pulse rounded-xl bg-muted" /></div></div>; }

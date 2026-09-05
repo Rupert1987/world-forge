@@ -264,3 +264,40 @@ test("returns the complete endpoint bundle required by OpenAPI", () => {
   assert.equal(bundle.unrealScene.format, "world-forge-unreal-blockout");
   assert.equal(JSON.parse(bundle.manifest).unrealScene.version, 1);
 });
+
+test("draft export stamps arbitrary units and disables centimeter claims", () => {
+  const project = {
+    id: "proj-draft",
+    name: "Draft World",
+    analysis,
+  };
+  const bundle = buildUnrealExportBundle(project, "2026-09-06T00:00:00.000Z", {
+    draft: true,
+    tier: "draft",
+    failingChecks: ["camera-geometry-unverified", "metric-scale-unknown"],
+  });
+  assert.equal(bundle.exportMetadata.units, "arbitrary");
+  assert.equal(bundle.exportMetadata.pose, "unsolved");
+  assert.equal(bundle.exportMetadata.centimeterClaimsEnabled, false);
+  assert.equal(bundle.exportMetadata.WorldToMeters, 100);
+  assert.match(bundle.filename, /draft-unscaled/);
+  const parsed = JSON.parse(bundle.manifest);
+  assert.equal(parsed.exportMetadata.centimeterClaimsEnabled, false);
+});
+
+test("scale-locked export enables centimeter claims with WorldToMeters=100", () => {
+  const project = {
+    id: "proj-locked",
+    name: "Locked World",
+    analysis,
+  };
+  const bundle = buildUnrealExportBundle(project, "2026-09-06T00:00:00.000Z", {
+    draft: false,
+    tier: "scale-locked",
+  });
+  assert.equal(bundle.exportMetadata.units, "centimeters");
+  assert.equal(bundle.exportMetadata.pose, "scale-locked");
+  assert.equal(bundle.exportMetadata.centimeterClaimsEnabled, true);
+  assert.equal(bundle.exportMetadata.WorldToMeters, 100);
+  assert.equal(bundle.exportMetadata.metersToUnrealCentimeters, 100);
+});

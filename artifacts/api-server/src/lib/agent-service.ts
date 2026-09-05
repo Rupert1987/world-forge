@@ -14,6 +14,7 @@ import {
   readObjectAsDataUrl,
   storeGeneratedArtifact,
 } from "./worldforge-storage";
+import { computeExportReadiness } from "./evidence-gates";
 
 function internalApiUrl(path: string) {
   const port = process.env.PORT;
@@ -239,7 +240,12 @@ export async function getAgentAnalysisJob(ownerId: string, jobId: string) {
 
 export async function exportAgentProject(ownerId: string, projectId: string) {
   const project = await getAgentProject(ownerId, projectId);
-  if (project.status !== "ready") throw new Error("Project analysis must complete before export");
+  const readiness = computeExportReadiness(project.analysis as Record<string, unknown> | null);
+  if (!readiness.exportReadyCm) {
+    throw new Error(
+      `Full Unreal cm export requires scale-locked geometry (tier=${readiness.tier}; failing=${readiness.failingChecks.join(",") || "none"}). Analysis status alone is not enough.`,
+    );
+  }
   const bundle = await internalJson<{
     filename: string;
     generatedAt: string;
@@ -264,6 +270,7 @@ export async function reviewAgentConfidence(ownerId: string, projectId: string) 
   const project = await getAgentProject(ownerId, projectId);
   const analysis = project.analysis as Record<string, unknown> | null;
   const validations = Array.isArray(analysis?.validations) ? analysis.validations : [];
+  const readiness = computeExportReadiness(analysis);
   return {
     projectId: project.id,
     status: project.status,
@@ -274,6 +281,10 @@ export async function reviewAgentConfidence(ownerId: string, projectId: string) 
     criticalWarnings: validations.filter((item) =>
       Boolean(item && typeof item === "object" && (item as { severity?: unknown }).severity === "critical")),
     validations,
-    exportReady: project.status === "ready",
+    exportTier: readiness.tier,
+    exportReady: readiness.exportReady,
+    exportReadyCm: readiness.exportReadyCm,
+    exportReadyDraft: readiness.exportReadyDraft,
+    failingChecks: readiness.failingChecks,
   };
 }

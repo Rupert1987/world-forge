@@ -735,15 +735,37 @@ print("World Forge blockout export ready: landscape heightmap=%s splines=%d prox
 `;
 }
 
+export type UnrealExportOptions = {
+  draft?: boolean;
+  tier?: "draft" | "verified" | "scale-locked";
+  failingChecks?: string[];
+};
+
 export function buildUnrealExportBundle(
   project: { id: string; name: string; analysis: ExportAnalysis },
   generatedAt: string,
+  options: UnrealExportOptions = {},
 ) {
+  const draft = Boolean(options.draft);
+  const tier = options.tier ?? (draft ? "draft" : "scale-locked");
+  const failingChecks = options.failingChecks ?? [];
   const unrealScene = buildUnrealScene(project.analysis);
+  const exportMetadata = {
+    units: draft ? "arbitrary" : "centimeters",
+    pose: draft ? "unsolved" : "scale-locked",
+    exportTier: tier,
+    centimeterClaimsEnabled: !draft,
+    WorldToMeters: 100,
+    metersToUnrealCentimeters: METERS_TO_UNREAL_CENTIMETERS,
+    failingChecks,
+  };
   const manifest = JSON.stringify(
     {
       project: project.name,
-      coordinateSystem: project.analysis.map.coordinateSystem,
+      exportMetadata,
+      coordinateSystem: draft
+        ? "World Forge arbitrary units · pose unsolved · not survey-grade centimeters"
+        : project.analysis.map.coordinateSystem,
       map: project.analysis.map,
       landmarks: project.analysis.landmarks,
       assetTree: project.analysis.assetTree,
@@ -762,9 +784,11 @@ export function buildUnrealExportBundle(
     null,
     2,
   );
+  const suffix = draft ? "-draft-unscaled" : "-unreal-blockout-export";
   return {
-    filename: `${project.id}-unreal-blockout-export.json`,
+    filename: `${project.id}${suffix}.json`,
     generatedAt,
+    exportMetadata,
     unrealScript: buildUnrealEditorScript(project.name, unrealScene),
     manifest,
     unrealScene,

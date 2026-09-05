@@ -21,19 +21,22 @@ const CLAUDE_CONFIG = `{
       "type": "http",
       "url": "${WORLD_FORGE_ORIGIN}/api/mcp",
       "headers": {
-        "Authorization": "Bearer \${WORLDFORGE_API_KEY}"
+        "X-API-Key": "\${WORLDFORGE_API_KEY}"
       }
     }
   }
 }`;
 
-const REST_EXAMPLE = `# 1. Verify the key
+const REST_EXAMPLE = `# Prefer X-API-Key (survives proxies that strip Authorization)
 curl ${WORLD_FORGE_ORIGIN}/api/v1/projects \\
-  -H "Authorization: Bearer $WORLDFORGE_API_KEY"
+  -H "X-API-Key: $WORLDFORGE_API_KEY"
 
-# 2. For each image: request a signed URL, PUT bytes to uploadUrl,
-#    then POST its objectPath to /api/v1/projects/{projectId}/assets.
-# 3. Start analysis, poll statusUrl, GET /confidence, then GET /export.`;
+# Bearer also works against the same runtime:
+# curl ${WORLD_FORGE_ORIGIN}/api/v1/projects \\
+#   -H "Authorization: Bearer $WORLDFORGE_API_KEY"
+
+# Then: signed upload → attach assets → analyze → GET /confidence →
+# GET /export only when exportReadyCm / scale-locked.`;
 
 export default function DeveloperAccessPage() {
   return <WorldForgeShell><div className="min-h-[100dvh]">

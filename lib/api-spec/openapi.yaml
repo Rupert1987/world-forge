@@ -163,7 +163,7 @@ paths:
       operationId: listAgentProjects
       tags: [automation]
       summary: List projects available to an API key
-      security: [{ ApiKeyAuth: [] }]
+      security: [{ ApiKeyAuth: [] }, { ApiKeyHeader: [] }]
       responses:
         "200":
           description: Agent project summaries
@@ -177,7 +177,7 @@ paths:
       operationId: createAgentProject
       tags: [automation]
       summary: Create a project through an agent
-      security: [{ ApiKeyAuth: [] }]
+      security: [{ ApiKeyAuth: [] }, { ApiKeyHeader: [] }]
       requestBody:
         required: true
         content:
@@ -195,7 +195,7 @@ paths:
       operationId: getAgentProject
       tags: [automation]
       summary: Get a project and its latest persisted analysis
-      security: [{ ApiKeyAuth: [] }]
+      security: [{ ApiKeyAuth: [] }, { ApiKeyHeader: [] }]
       parameters:
         - name: projectId
           in: path
@@ -213,7 +213,7 @@ paths:
       operationId: startAgentAnalysis
       tags: [automation]
       summary: Start an asynchronous world analysis job
-      security: [{ ApiKeyAuth: [] }]
+      security: [{ ApiKeyAuth: [] }, { ApiKeyHeader: [] }]
       parameters:
         - name: projectId
           in: path
@@ -235,7 +235,7 @@ paths:
       operationId: uploadAgentProjectView
       tags: [automation]
       summary: Attach an uploaded canonical or alternate project view
-      security: [{ ApiKeyAuth: [] }]
+      security: [{ ApiKeyAuth: [] }, { ApiKeyHeader: [] }]
       parameters:
         - name: projectId
           in: path
@@ -257,7 +257,7 @@ paths:
       operationId: requestAgentProjectUpload
       tags: [automation]
       summary: Request a signed direct-upload URL for a project image
-      security: [{ ApiKeyAuth: [] }]
+      security: [{ ApiKeyAuth: [] }, { ApiKeyHeader: [] }]
       parameters:
         - name: projectId
           in: path
@@ -279,7 +279,7 @@ paths:
       operationId: getAgentAnalysisJob
       tags: [automation]
       summary: Poll an asynchronous analysis job
-      security: [{ ApiKeyAuth: [] }]
+      security: [{ ApiKeyAuth: [] }, { ApiKeyHeader: [] }]
       parameters:
         - name: jobId
           in: path
@@ -297,7 +297,7 @@ paths:
       operationId: getAgentProjectConfidence
       tags: [automation]
       summary: Get confidence and verification evidence
-      security: [{ ApiKeyAuth: [] }]
+      security: [{ ApiKeyAuth: [] }, { ApiKeyHeader: [] }]
       parameters:
         - name: projectId
           in: path
@@ -314,7 +314,7 @@ paths:
       operationId: exportAgentProject
       tags: [automation]
       summary: Get the Unreal-ready export bundle
-      security: [{ ApiKeyAuth: [] }]
+      security: [{ ApiKeyAuth: [] }, { ApiKeyHeader: [] }]
       parameters:
         - name: projectId
           in: path
@@ -331,7 +331,7 @@ paths:
       operationId: callWorldForgeMcp
       tags: [mcp]
       summary: Call the World Forge MCP JSON-RPC transport
-      security: [{ ApiKeyAuth: [] }]
+      security: [{ ApiKeyAuth: [] }, { ApiKeyHeader: [] }]
       requestBody:
         required: true
         content:
@@ -349,6 +349,12 @@ components:
       type: http
       scheme: bearer
       bearerFormat: WorldForgeApiKey
+      description: Prefer for local scripts. Send `Authorization: Bearer wf_live_...`.
+    ApiKeyHeader:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Preferred for private/proxy deploys that strip Authorization. Send `X-API-Key: wf_live_...`. Runtime accepts Bearer or X-API-Key.
   schemas:
     HealthStatus:
       type: object

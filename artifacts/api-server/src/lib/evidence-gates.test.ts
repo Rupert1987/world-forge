@@ -5,6 +5,11 @@ import {
   type CameraGeometryVerification,
   isVerifiedCameraGeometry,
 } from "./camera-geometry";
+import {
+  computeExportReadiness,
+  hasCompletedAnalysis,
+  hasMetricScale,
+} from "./evidence-gates";
 import { perceptualImageSimilarity } from "./geometry-verifier";
 
 const toDataUrl = (mime: string, bytes: Buffer) =>
@@ -123,4 +128,81 @@ test("accepts genuinely separated cameras with triangulation angle", () => {
     ),
     true,
   );
+});
+
+test("export readiness stays draft without verified camera geometry", () => {
+  const analysis = {
+    confidence: 0.8,
+    map: { widthMeters: 100 },
+    landmarks: [{ id: "a" }],
+    assetTree: [{ id: "b" }],
+    validations: [],
+    calibrationEvidence: {
+      knownScaleMeters: 20,
+      knownScalePixelDistance: 140,
+      alternateImageSha256s: ["x", "y"],
+    },
+    cameraGeometryVerification: cameraGeometry([
+      [0, 0, 0],
+      [0, 0, 0],
+      [0, 0, 0],
+    ]),
+  };
+  analysis.cameraGeometryVerification.status = "rejected";
+  const readiness = computeExportReadiness(analysis as never);
+  assert.equal(readiness.tier, "draft");
+  assert.equal(readiness.exportReadyCm, false);
+  assert.equal(readiness.exportReadyDraft, true);
+  assert.ok(readiness.failingChecks.includes("camera-geometry-unverified"));
+});
+
+test("export readiness reaches scale-locked only with pose + metric scale", () => {
+  const analysis = {
+    confidence: 0.91,
+    map: { widthMeters: 100 },
+    landmarks: [{ id: "a" }],
+    assetTree: [{ id: "b" }],
+    validations: [],
+    calibrationEvidence: {
+      knownScaleMeters: 20,
+      knownScalePixelDistance: 140,
+      alternateImageSha256s: ["x", "y"],
+    },
+    cameraGeometryVerification: cameraGeometry([
+      [-2, 0, 0],
+      [0, 0, 0],
+      [2, 0, 0],
+    ]),
+  };
+  assert.equal(hasCompletedAnalysis(analysis as never), true);
+  assert.equal(hasMetricScale(analysis as never), true);
+  const readiness = computeExportReadiness(analysis as never);
+  assert.equal(readiness.tier, "scale-locked");
+  assert.equal(readiness.exportReadyCm, true);
+  assert.equal(readiness.exportReady, true);
+  assert.deepEqual(readiness.failingChecks, []);
+});
+
+test("verified without metric scale is not cm-exportable", () => {
+  const analysis = {
+    confidence: 0.9,
+    map: { widthMeters: 100 },
+    landmarks: [{ id: "a" }],
+    assetTree: [{ id: "b" }],
+    validations: [],
+    calibrationEvidence: {
+      knownScaleMeters: null,
+      knownScalePixelDistance: null,
+      alternateImageSha256s: ["x", "y"],
+    },
+    cameraGeometryVerification: cameraGeometry([
+      [-2, 0, 0],
+      [0, 0, 0],
+      [2, 0, 0],
+    ]),
+  };
+  const readiness = computeExportReadiness(analysis as never);
+  assert.equal(readiness.tier, "verified");
+  assert.equal(readiness.exportReadyCm, false);
+  assert.ok(readiness.failingChecks.includes("metric-scale-unknown"));
 });

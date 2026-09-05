@@ -20,6 +20,10 @@ import {
   type GeometryImage,
 } from "../lib/camera-geometry";
 import {
+  computeExportReadiness,
+  hasCompletedAnalysis,
+} from "../lib/evidence-gates";
+import {
   AnalyzeProjectBody,
   AnalyzeProjectParams,
   CreateProjectBody,
@@ -484,6 +488,15 @@ function enrichAnalysis(
       5,
     3,
   );
+  // Honest confidence formula (MATH_FIRST_99 — no proxy boosts):
+  // weighted = visualDetection*0.27 + scaleCalibration*0.20 + depthInference*0.20
+  //          + coverageCompleteness*0.16 + spatialConsistency*0.17
+  // ceiling  = evidenceCeiling only (never jump to 0.995). Without scale+geometry gates,
+  //            hard-cap <=0.98 so the UI cannot claim ~99%. With gates, allow up to 1.0
+  //            but never Math.max(0.99, weighted).
+  // overall  = min(ceiling, weighted)
+  // target-met iff weighted>=0.99 AND hasPixelCalibration AND hasGeometricValidation
+  //            AND no landmark depthEvidence.crossCheck === "review-required".
   const evidenceCeiling =
     0.45 +
     scaleCalibration * 0.18 +
@@ -491,33 +504,24 @@ function enrichAnalysis(
     verifiedViewEvidence * 0.13 +
     coverageCompleteness * 0.08 +
     spatialConsistency * 0.04;
-  const ceiling =
-    evidence.hasPixelCalibration && hasGeometricValidation
-      ? 0.995
-      : round(Math.max(0.5, Math.min(0.98, evidenceCeiling)), 3);
+  const gatesOpen =
+    evidence.hasPixelCalibration && hasGeometricValidation;
+  const ceiling = gatesOpen
+    ? round(Math.max(0.5, Math.min(1, evidenceCeiling)), 3)
+    : round(Math.max(0.5, Math.min(0.98, evidenceCeiling)), 3);
   const weighted =
     visualDetection * 0.27 +
     scaleCalibration * 0.2 +
     depthInference * 0.2 +
     coverageCompleteness * 0.16 +
     spatialConsistency * 0.17;
-  const overall = round(
-    Math.min(
-      ceiling,
-      evidence.hasPixelCalibration && hasGeometricValidation
-        ? Math.max(0.99, weighted)
-        : weighted,
-    ),
-    3,
-  );
+  const overall = round(Math.min(ceiling, weighted), 3);
   const hasDepthReview = landmarks.some(
     (landmark) => landmark.depthEvidence?.crossCheck === "review-required",
   );
   const status = hasDepthReview
     ? "review-required"
-    : overall >= 0.99 &&
-        evidence.hasPixelCalibration &&
-        hasGeometricValidation
+    : weighted >= 0.99 && gatesOpen
       ? "target-met"
       : !evidence.hasPixelCalibration
         ? "needs-calibration"
@@ -543,6 +547,12 @@ function enrichAnalysis(
     assetTree,
     validations,
     spatialRelations,
+    geometryVerification: analysis.geometryVerification
+      ? {
+          ...analysis.geometryVerification,
+          cameraPoseVerified: hasGeometricValidation,
+        }
+      : analysis.geometryVerification,
     confidenceBreakdown: {
       visualDetection,
       scaleCalibration,
@@ -1523,7 +1533,7 @@ export async function hydrateProjects() {
   for (const project of persisted) {
     if (!project.analysis || typeof project.analysis !== "object") continue;
     const analysis = project.analysis as Analysis;
-    const hasCompletedAnalysis =
+    const hasPersistedRealAnalysis =
       analysis.calibrationEvidence?.canonicalImageSha256 !== undefined &&
       analysis.calibrationEvidence.canonicalImageSha256 !== "seed-analysis";
     const hydratedProject: Project = {
@@ -1533,7 +1543,7 @@ export async function hydrateProjects() {
       imageName: project.imageName,
       status:
         project.status === "analyzing"
-          ? hasCompletedAnalysis
+          ? hasPersistedRealAnalysis
             ? "ready"
             : "draft"
           : (project.status as Project["status"]),
@@ -1658,10 +1668,14 @@ router.post("/projects", async (req, res) => {
     res.status(400).json({ error: "Project name and image name are required" });
     return;
   }
+  if (!req.worldForgeOwnerId) {
+    res.status(401).json({ error: "Sign in to create projects" });
+    return;
+  }
   const id = `world-${randomUUID()}`;
   const project: Project = {
     id,
-    ownerId: req.worldForgeOwnerId!,
+    ownerId: req.worldForgeOwnerId,
     name: parsed.data.name,
     imageName: parsed.data.imageName,
     status: "draft",
@@ -1669,7 +1683,18 @@ router.post("/projects", async (req, res) => {
     analysis: buildSeedAnalysis(),
   };
   projects.set(id, project);
-  await persistProject(project);
+  try {
+    await persistProject(project);
+  } catch (error) {
+    projects.delete(id);
+    req.log.error({ err: error }, "Failed to persist new project");
+    res.status(500).json({
+      error: "Could not persist project",
+      code: "PROJECT_PERSIST_FAILED",
+      detail: error instanceof Error ? error.message : "Unknown persistence error",
+    });
+    return;
+  }
   res.status(201).json(project);
 });
 
@@ -1692,6 +1717,13 @@ router.patch("/projects/:projectId", async (req, res) => {
   }
   const project = projects.get(params.data.projectId);
   if (!project) return;
+  if (body.data.status === "ready" && !hasCompletedAnalysis(project.analysis)) {
+    res.status(409).json({
+      error: "Cannot set status to ready without completed analysis",
+      code: "ANALYSIS_REQUIRED",
+    });
+    return;
+  }
   const updated: Project = {
     ...project,
     ...(body.data.name ? { name: body.data.name } : {}),
@@ -2052,7 +2084,38 @@ router.get("/projects/:projectId/export", (req, res) => {
     res.status(404).json({ error: "Project not found" });
     return;
   }
-  res.json(buildUnrealExportBundle(project, now()));
+  const readiness = computeExportReadiness(project.analysis);
+  const draftRequested =
+    req.query.draft === "1" ||
+    req.query.draft === "true" ||
+    String(req.query.mode ?? "").toLowerCase() === "draft";
+  if (!readiness.exportReadyCm) {
+    if (!draftRequested || !readiness.exportReadyDraft) {
+      res.status(409).json({
+        code: "EXPORT_NOT_SCALE_LOCKED",
+        tier: readiness.tier,
+        failingChecks: readiness.failingChecks,
+        message:
+          "Full Unreal centimeter export requires scale-locked camera geometry (verified pose + metric scale). Pass ?draft=1 for an unscaled draft bundle.",
+      });
+      return;
+    }
+    res.json(
+      buildUnrealExportBundle(project, now(), {
+        draft: true,
+        tier: readiness.tier,
+        failingChecks: readiness.failingChecks,
+      }),
+    );
+    return;
+  }
+  res.json(
+    buildUnrealExportBundle(project, now(), {
+      draft: false,
+      tier: readiness.tier,
+      failingChecks: readiness.failingChecks,
+    }),
+  );
 });
 
 export default router;
